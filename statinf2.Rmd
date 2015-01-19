@@ -1,0 +1,141 @@
+---
+title: "Report for basic inferential data analysis"
+output: pdf_document
+---
+NOTE: I understand that "Each pdf report should be no more than 3 pages with 3 pages of supportimg appendix material if needed (code, figures, etcetera).". However, I find it is easier to follow the report if all the appendix material is integrated with the conclusions, since I'm "kniting" the R markdown file. Thanks for understanding, hope you enjoy :)
+
+### 1. Load the ToothGrowth data and perform some basic exploratory data analyses 
+The data "ToothGrowth" was loaded into the R environment
+```{r}
+data(ToothGrowth)
+```
+
+I started by looking at the data structure
+```{r}
+str(ToothGrowth)
+```
+So the data is a `r class(ToothGrowth)` with `r dim(ToothGrowth)[1]` observations and `r dim(ToothGrowth)[2]` variables. These variables are `r names(ToothGrowth)`.
+
+I had a quick look to the data to see its organization
+```{r}
+head(ToothGrowth,3)
+tail(ToothGrowth,3)
+```
+
+After having a general look at the data, I asked if there are any many missing values  in the data, which could influence the analysis
+```{r}
+sum(is.na(ToothGrowth))
+```
+
+With no mising values, I started to explore the statistics summary
+```{r}
+summary(ToothGrowth)
+```
+
+And as a visual representation visual representation
+```{r,fig.width=9, dev='pdf'}
+par(mfrow=c(1,2))
+boxplot(ToothGrowth$len,ylab="Tooth length")
+hist(ToothGrowth$len,xlab="Tooth length",main="")
+```
+
+**FIGURE 1:** Exploratory representation of the teeth length
+
+The data seems to be fairly normally distributed. However, the collection of lengths is not meaningful by itself, since it could depend on a variety of other measured variables, namely the supplement and its dose
+
+```{r,fig.width=9, dev='pdf'}
+par(mfrow=c(1,1))
+boxplot(ToothGrowth$len~ToothGrowth$dose+ToothGrowth$supp,xlab="Dose/Supplement",ylab="Tooth length")
+```
+
+**FIGURE 2:** Representation of the teeth length by the various variables studied
+
+**It looks like with an increase of dosage of the supplement is associated with higher tooth length.**
+
+## 2. Provide a basic summary of the data.
+To compare this different conditions, its important to know what are the summaries for each
+```{r}
+by(ToothGrowth$len,list(ToothGrowth$supp,ToothGrowth$dose),summary)
+```
+
+## 3. Use confidence intervals and/or hypothesis tests to compare tooth growth by supp and dose. 
+
+To statistically infer from the exploratory analysis, I started by doing a T-test on the various conditions. This test assumes that the populations estimated are normally distributed and that the collected samples are representative independent and identically distributed random variables from these populations. In this particular case, it seems plausible that the population of teeth lengths have a the same variace. 
+
+So, I'm interested in understaning if the mean values estimated for each supplement are statistically different
+```{r}
+#Test OJ vs VC
+t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1],var.equal = TRUE)
+```
+
+It seems that the difference for supplements, regardless of the used dosage, is not significant at a level of alpha=0.05. This is confirmed by the **p.value `r t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1],var.equal = TRUE)$p.value`**, which is greater than alpha, and thus I fail to reject the null hypothesis that the mean of the tooth length is the same for both supplements. **The confidence interval obtained is from `r t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1],var.equal = TRUE)$conf[1]` to `r t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1],var.equal = TRUE)$conf[2]`**, which contains the value 0. Altoghter, this suggests that there is a higher than 5% change of getting a mean value of **`r unname(t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1])$estimate[1])`**, if the true population mean is **`r unname(t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1])$estimate[2])`** (also indicated by the t-statistic **`r t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1])$statistic`**, which shows that `r unname(t.test(ToothGrowth[ToothGrowth$supp=="OJ",1],ToothGrowth[ToothGrowth$supp=="VC",1])$estimate[1])` is less than 2 standard deviations away from the mean)
+
+However, as I noticed before, it seems from the boxplots that higher doses result in higher tooth length. As such, I tested the hypotheses that differente doages result in differente tooth lengths.
+```{r}
+#Test 1 vs 0.5
+t.test(ToothGrowth[ToothGrowth$dose==1,1],ToothGrowth[ToothGrowth$dose==0.5,1],var.equal = TRUE)
+#Test 2 vs 0.5
+t.test(ToothGrowth[ToothGrowth$dose==2,1],ToothGrowth[ToothGrowth$dose==0.5,1],var.equal = TRUE)
+```
+
+We can see that both p-values are very small, indicating that **doses of 1 or 2 result in increased effect on tooth length compared to dose of 0.5**, regardeless of the supplement.
+
+It is clear that multiple comparisons are required to explore all the possible effects. As such, simply adding extra t-tests is going to lead to an increase in false positives. Consequently, I did a multivariable analysis by taking the False Discovery Rate (FDR) *(this is explained in week 4 of the course so I'm not sure if should be included in the report)*. This method was chosen instead of Bonferroni because it is less conservative, so more relationships can be infered from the data, which can be used in further studies
+
+```{r}
+#Take the length for every dose/supplement combination
+oj05<-ToothGrowth[ToothGrowth$supp=="OJ"&ToothGrowth$dose=="0.5",1]
+oj1<-ToothGrowth[ToothGrowth$supp=="OJ"&ToothGrowth$dose=="1",1]
+oj2<-ToothGrowth[ToothGrowth$supp=="OJ"&ToothGrowth$dose=="2",1]
+vc05<-ToothGrowth[ToothGrowth$supp=="VC"&ToothGrowth$dose=="0.5",1]
+vc1<-ToothGrowth[ToothGrowth$supp=="VC"&ToothGrowth$dose=="1",1]
+vc2<-ToothGrowth[ToothGrowth$supp=="VC"&ToothGrowth$dose=="2",1]
+
+#Individually test all conditions
+tests<-data.frame()
+tests<-rbind(tests,"oj05 - oj1"=t.test(oj05,oj1,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"oj05 - oj2"=t.test(oj05,oj2,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"oj1 - oj2"=t.test(oj1,oj2,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc05 - vc1"=t.test(vc05,vc1,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc05 - vc2"=t.test(vc05,vc2,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc1 - vc2"=t.test(vc1,vc2,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc05 - oc05"=t.test(vc05,oj05,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc1 - oc1"=t.test(vc1,oj1,var.equal = TRUE)$p.value)
+tests<-rbind(tests,"vc2 - oc2"=t.test(vc2,oj2,var.equal = TRUE)$p.value)
+
+#Organize the data
+tests<-cbind(tests,rownames(tests))
+tests<-tests[,c(2,1)]
+rownames(tests)<-NULL
+names(tests)<-c("Comparison","p-value")
+tests
+```
+
+```{r}
+#Find the FDR
+m=nrow(tests)
+alpha=0.05
+
+tests<-tests[order(tests[,2]),]
+tests<-cbind(tests,"i"=1:m) # Attribute the rank
+tests<-cbind(tests,"i/m"=tests[,3]/m)# calculate i/m
+tests<-cbind(tests,"i/m*alpha"=tests[,4]*alpha)# Calculate i/m*a
+tests<-cbind(tests,"FDR"=tests[,2]<tests[,5]) #Check if p<i/m*a
+tests
+```
+
+
+## 4. State your conclusions and the assumptions needed for your conclusions. 
+
+The assumptions needed for the conclusions are:
+
+- The populations estimated are normally distributed, regardeless of supplement and dose
+- The collected samples are representative independent and identically distributed random variables from these populations. 
+- The population of teeth lengths have a the same variance, regardeless of supplement and dose 
+
+The conclusions are as follow:
+
+- Increasing the dose of any supplement results in increase teeth length
+- At doses 0.5 and 1, OC supplement is more efficient than VC supplement, resulting in an average 1.7 and 1.4 times longer teeth, respectively
+- At dose 2, both treatments are equally efficient
+

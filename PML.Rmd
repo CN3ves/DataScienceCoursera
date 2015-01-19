@@ -1,0 +1,127 @@
+---
+title: "Practical machine learning report"
+output: html_document
+---
+### Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify *how much of a particular activity they do*, but they rarely quantify *how well they do it*. 
+
+### Aim
+In this project, 6 participants were asked to perform barbell lifts correctly and incorrectly in 5 different ways. The data from **accelerometers** on the **belt, forearm, arm, and dumbell**  will be used to predict *how well* the barbell lifts were performed.
+
+### Analysis
+
+#### Initial setting
+
+- To guarantee reproducibility, the seed 666 was set. 
+- The analysis requires the package caret for model building
+- The data from the study was loaded and the training data was divided into train and cross-validation datasets.
+
+```{r}
+# for reproducibility
+set.seed(666) 
+
+# requires caret package
+suppressMessages(library(caret))
+
+# load the raw data
+train.data<-read.csv("pml-training.csv",header=TRUE)
+test.data<-read.csv("pml-testing.csv",header=TRUE)
+
+# divide the training data for cross-validation
+intrain<-createDataPartition(train.data$classe,p=0.7,list=FALSE)
+train<-train.data[intrain,]
+cross<-train.data[-intrain,]
+```
+
+#### Data processing
+Since we are interested in predicting the quality of the activity by using the data from the *accelerometers* on the belt, forearm, arm, and dumbell, the train data set was simplified by taking only the variables corresponding to the accelerometer values.
+```{r}
+# select only the accelerometer data
+accel<-grep("accel",names(train))
+train<-train[,c(accel,ncol(train))]
+head(train)
+```
+
+As some of these variables seem to have a great number of missing values (NA), incomplete variables were also excluded
+```{r}
+# find incomplete variables
+temp<-numeric()
+for (i in 1:ncol(train)) {
+  if(sum(is.na(train[,i]))!=0) {
+    print(paste(i,names(train)[i],sep="   "))
+    temp<-append(temp,i)
+      }
+}
+```
+
+The incomplete variables correspond to the variance of the values measurements. As the mean values have more predictablility value than the variance of these values, the incomplete variables were removed.
+```{r}
+train<-train[,-temp]
+names(train)
+```
+
+#### Exploratory data analysis
+The remaining variables were ploted to check their influence in the exercise quality (*classe*)
+```{r}
+# explore the influence of each variable
+featurePlot(x=train[,1:4],y=train$classe,plot="box")
+featurePlot(x=train[,5:8],y=train$classe,plot="box")
+featurePlot(x=train[,9:12],y=train$classe,plot="box")
+featurePlot(x=train[,13:16],y=train$classe,plot="box")
+```
+
+All of the total measurements (*total_accel*) from the accelerometers seem to be unrelated to the *classe* of exercise
+```{r}
+# remove "total" measurements
+train<-train[,c(-1,-5,-9,-13)]
+names(train)
+```
+
+#### Model building
+The chosen variables were converted into numeric values.
+```{r}
+# set all variables as numeric
+for (i in 1:(ncol(train)-1)) {
+    train[,i]<-as.numeric(train[,i])
+}
+```
+
+Having simplified the train data and selected the most relevant variables, a random forest model (with k-fold cross-validation) was chosen to predict how well the the barbell lifts were performed, because a linear relationship is not apparent for these categorical values.
+
+```{r,cache=TRUE}
+model<-train(classe~.,data=train,method="rf",prox=TRUE,trControl = trainControl(method = "cv",number=5))
+
+```
+
+#### Cross valiation/Out of sample error
+The *in-sample-error* was measured by comparing the prediction of the model with the real value of the of the train data
+```{r}
+table(train$classe,predict(model,train))
+confusionMatrix(train$classe,predict(model,train))$overall
+confusionMatrix(train$classe,predict(model,train))$byClass
+```
+
+The fact that the accuracy is `r unname(confusionMatrix(train$classe,predict(model,train))$overall[1])` is not strange, since the model was built from these data. However, it could indicate overfitting of the model to the train data. To estimate the efficiency of the model better, the prediction of the model was compared to the cross-validation data 
+
+```{r}
+table(cross$classe,predict(model,cross))
+confusionMatrix(cross$classe,predict(model,cross))$overall
+confusionMatrix(cross$classe,predict(model,cross))$byClass
+```
+
+In this case, the *out-of-sample* accuracy is `r unname(confusionMatrix(cross$classe,predict(model,cross))$overall[1])` , which is still very high, suggesting that the model is highly efficient even when confronted with new data sets. 
+
+### Prediction
+```{r}
+answers<-predict(model,test.data[,-160])
+
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```

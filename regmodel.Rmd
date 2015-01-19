@@ -1,0 +1,101 @@
+---
+title: "Motor Trend: Effect of Transmission on Fuel Consumption"
+output: pdf_document
+---
+
+##Executive summary
+In this report I explore the relationship between consumption in miles per gallon and transmission type (automatic vs. manual). Even though it initially looks like manual transmission is associated with less consumption, by analysing counfounding variables, I find that, for a given number of cylinders and weight, this difference is not significant. As such, no clear evidence was found in favour of either automatic or manual transmission.
+ 
+###1. Exploratory data analysis
+
+- I'm particularly interested in understanding the relationship between the consumption **mpg** and the transmission **am**. A boxplot is a good starting point to graphically explore any potential relationship between these two variables (*Figure 1*). It seems that manual transmission is assossiated with less consumption (*as in more miles made per the same amount of fuel*). 
+- However, a number of other counfounding variables could be influencing this result. For example, it would seem logical to think that number of cylinders **cyl** could also influence the consumption. The previous boxplot was conditioned to this variable in order to check if the manual transmission is associated with better consumption even when the number of cylinders is hold constant (*Figure 2*). It seems that the major difference is specific for 4 cylinder cars, the consumption being more similar for both 6 and 8 cylinder. As such, the number of cylinders is a important variable to account for.
+
+###2. Model selection
+Because of the existence of counfounding variables, it is important to explore the effects of including these variables in the model. I started by exploring the correlation of each variable with the consumption **mpg**.
+
+*List of highly correlated (>0.8) variables:*
+
+```{r, echo=FALSE} 
+correlations<-cbind(
+    cor(mtcars$mpg, mtcars$cyl),
+    cor(mtcars$mpg, mtcars$disp),
+    cor(mtcars$mpg, mtcars$hp),
+    cor(mtcars$mpg, mtcars$drat),
+    cor(mtcars$mpg, mtcars$wt),
+    cor(mtcars$mpg, mtcars$qsec),
+    cor(mtcars$mpg, mtcars$vs),
+    cor(mtcars$mpg, mtcars$gear),
+    cor(mtcars$mpg, mtcars$carb)
+)
+colnames(correlations)<-names(mtcars[,c(2:8,10:11)])
+abs(correlations)>0.8
+```
+
+From the correlations it's clear that the variables more correlated with consumption are the number of cylinders **cyl**, the displacement **disp** and the weight **wt**. From this information, 5 models were chosen to be explored:
+
+```{r} 
+fit1<-lm(mpg~am,mtcars)
+fit2<-lm(mpg~am+cyl,mtcars)
+fit3<-lm(mpg~am+cyl+wt,mtcars)
+fit4<-lm(mpg~am+cyl+wt+disp,mtcars)
+fit5<-lm(mpg~.,mtcars)
+```
+
+The variance was studied for each of these models in order to select which is more relevant. This was done by *vif()* (car package) and *anova()*
+
+```{r, echo=FALSE}
+suppressWarnings(library(car))
+vif(fit2)
+vif(fit3)
+vif(fit4)
+```
+
+According to the variance inflation factors obtained, it would seem that adding **disp** variable to the model has a great impact on the variance of **cyl** and **wt**, suggesting multicollinearity.
+
+```{r,echo=FALSE}
+anova (fit1,fit2,fit3,fit4,fit5)[c(1,2,3,6)]
+model<-fit3
+```
+
+Interestingly, the analysis of variance suggests that the addition of **cyl** and **wt** are the only significant regressor additions (alpha < 0.01). This would be in agreement with the VIF analysis, which suggested that **disp** correlated with both **cyl** and **wt**, thus being a redundant variable for the model.
+
+The chosen model is **mpg = b0 + b1.am + b2.cyl + b3.wt**
+
+###3. Residual diagnostics
+The influence of each observation on the coefficients was taken by *dfbetas()*. The observations with higher influence on b0 (expected value of mpg for automatic transmission) and b1 (difference between manual and automatic transmission) are shown:
+```{r,echo=FALSE}
+temp<-intersect(head(rownames(dfbetas(model)[order(abs(dfbetas(model)[,1]),decreasing=TRUE),])),head(rownames(dfbetas(model)[order(abs(dfbetas(model)[,2]),decreasing=TRUE),])))
+dfbetas(model)[temp,]
+```
+
+To confirm the validity of the model assumptions the residuals of the model were also  plotted for analysis (*Figure 3*)
+
+### 3. Quantify the uncertainty and inference
+```{r,echo=FALSE}
+summary(model)$coefficients
+```
+
+## Conclusions
+The mean consumption of **a car with automatic transmission is 39.4 miles/(US)gallon** (standard error 2.64), while **for manual transmission this value is increased 0.17 miles/(US)gallon** (standard error 1.30), when *both number of cylinder and weigth are taken as counfounding variables*. However, the p-value for this difference is 0.89, which means that **there is no significant difference** between the consumption of cars with automatic or manual transmission. The corresponding confidence interval for b1 is `r confint(model)[2,]`, suggesting the difference between automatic and manual trnasmission is not significantly different from 0.
+
+### Annexes
+
+```{r, echo=FALSE, dev='pdf', fig.height=4,fig.width=4}
+boxplot(mpg~am,mtcars,xlab="Transmission type",ylab="Consumption / Miles/(US)gallon")
+```
+
+**Figure 1**: Representation of the consumption for cars with automatic transmission (0) or manual transmission (1)
+
+```{r, echo=FALSE, dev='pdf', fig.height=4,fig.width=4}
+library(lattice)
+bwplot(mtcars$mpg~factor(mtcars$am)|factor(mtcars$cyl),xlab="Transmission type",ylab="Consumption / Miles/(US)gallon")
+```
+
+**Figure 2**: Representation of the consumption for cars with automatic transmission (0) or manual transmission (1) conditioned by the number of cylinders (4,6 or 8)
+
+```{r, echo=FALSE, dev='pdf', fig.height=3,fig.width=3}
+plot(model)
+``` 
+
+**Figure 3**: Residual plot, normal QQ residual plot, residual scale-location plot and Cook's distance plot
